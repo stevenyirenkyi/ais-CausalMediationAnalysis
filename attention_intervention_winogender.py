@@ -1,26 +1,26 @@
-from attention_utils import perform_interventions, get_odds_ratio
-import fire
-import winobias
-from experiment import Model
-from transformers import GPT2Tokenizer
+"""Performs attention intervention on Winogender samples and saves results to JSON file."""
+
 import json
+
+import fire
 from pandas import DataFrame
+from transformers import GPT2Tokenizer
+
+import winogender
+from attention_utils import perform_interventions, get_odds_ratio
+from experiment import Model
 
 
-def get_interventions_winobias(gpt2_version, do_filter, split, model, tokenizer,
+def get_interventions_winogender(gpt2_version, do_filter, stat, model, tokenizer,
                                 device='cuda', filter_quantile=0.25):
-    if split == 'dev':
-        examples = winobias.load_dev_examples()
-    elif split == 'test':
-        examples = winobias.load_test_examples()
-    else:
-        raise ValueError(f"Invalid split: {split}")
+    examples = winogender.load_examples()
+    
     json_data = {'model_version': gpt2_version,
             'do_filter': do_filter,
-            'split': split,
+            'stat': stat,
             'num_examples_loaded': len(examples)}
     if do_filter:
-        interventions = [ex.to_intervention(tokenizer) for ex in examples]
+        interventions = [ex.to_intervention(tokenizer, stat) for ex in examples]
         df = DataFrame({'odds_ratio': [get_odds_ratio(intervention, model) for intervention in interventions]})
         df_expected = df[df.odds_ratio > 1]
         threshold = df_expected.odds_ratio.quantile(filter_quantile)
@@ -33,21 +33,20 @@ def get_interventions_winobias(gpt2_version, do_filter, split, model, tokenizer,
                 filtered_examples.append(ex)
 
         print(f'Num examples with odds ratio > 1: {len(df_expected)} / {len(examples)}')
-        print(
-            f'Num examples with odds ratio > {threshold:.4f} ({filter_quantile} quantile): {len(filtered_examples)} / {len(examples)}')
+        print(f'Num examples with odds ratio > {threshold:.4f} ({filter_quantile} quantile): {len(filtered_examples)} / {len(examples)}')
         json_data['num_examples_aligned'] = len(df_expected)
         json_data['filter_quantile'] = filter_quantile
         json_data['threshold'] = threshold
         examples = filtered_examples
     json_data['num_examples_analyzed'] = len(examples)
-    interventions = [ex.to_intervention(tokenizer) for ex in examples]
+    interventions = [ex.to_intervention(tokenizer, stat) for ex in examples]
     return interventions, json_data
 
-def intervene_attention(gpt2_version, do_filter, split, device='cuda', filter_quantile=0.25, random_weights=False):
+def intervene_attention(gpt2_version, do_filter, stat, device='cuda', filter_quantile=0.25, random_weights=False):
     model = Model(output_attentions=True, gpt2_version=gpt2_version, device=device, random_weights=random_weights)
     tokenizer = GPT2Tokenizer.from_pretrained(gpt2_version)
 
-    interventions, json_data = get_interventions_winobias(gpt2_version, do_filter, split, model, tokenizer,
+    interventions, json_data = get_interventions_winogender(gpt2_version, do_filter, stat, model, tokenizer,
                                                             device, filter_quantile)
     results = perform_interventions(interventions, model)
     json_data['mean_total_effect'] = DataFrame(results).total_effect.mean()
@@ -56,7 +55,7 @@ def intervene_attention(gpt2_version, do_filter, split, device='cuda', filter_qu
     filter_name = 'filtered' if do_filter else 'unfiltered'
     if random_weights:
         gpt2_version += '_random'
-    fname = f"winobias_data/attention_intervention_{gpt2_version}_{filter_name}_{split}.json"
+    fname = f"winogender_data/attention_intervention_{stat}_{gpt2_version}_{filter_name}.json"
     json_data['results'] = results
     with open(fname, 'w') as f:
         json.dump(json_data, f)
@@ -64,3 +63,4 @@ def intervene_attention(gpt2_version, do_filter, split, device='cuda', filter_qu
 
 if __name__ == "__main__":
     fire.Fire(intervene_attention)
+
