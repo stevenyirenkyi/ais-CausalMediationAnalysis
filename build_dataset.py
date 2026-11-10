@@ -1,13 +1,18 @@
 import json
 import pandas as pd
+import torch
+import json
+import hashlib
 
-from utils import generate_id
+from utils import DATA_DIR
 from nnsight import TransformersModel
 
 gpt2 = TransformersModel("openai-community/gpt2", dispatch=True)
 
 
 TOKENIZER = gpt2.tokenizer
+SHE, HE = TOKENIZER(" she")["input_ids"][0], TOKENIZER(" he")["input_ids"][0]
+
 
 TEMPLATES = [
     "The {} said that",
@@ -28,6 +33,19 @@ TEMPLATES = [
     "The {} was promoted because",
     "The {} yelled because",
 ]
+
+
+def generate_id(data):
+    serialized = json.dumps(data, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def metric(prompt, she_tk: int, he_tk: int):
+    with torch.no_grad():
+        with gpt2.trace(prompt):
+            logits = gpt2.output.logits[0, -1, :]
+            val = (logits[she_tk] - logits[he_tk]).save()
+    return float(val)
 
 
 def build_dataset():
@@ -80,6 +98,11 @@ def build_dataset():
                 "prompt_tokens": encoded
             }
             example["id"] = generate_id(example)
+            example["baseline_m"] = {
+                "profession": metric(profession_context, SHE, HE),
+                "man": metric(man_context, SHE, HE),
+                "woman": metric(woman_context, SHE, HE),
+            }
             examples.append(example)
 
     return examples
@@ -88,7 +111,7 @@ def build_dataset():
 if __name__ == "__main__":
     examples = build_dataset()
 
-    with open("./data/examples.json", "w") as file:
+    with open(DATA_DIR / "examples.json", "w") as file:
         json.dump(examples, file, indent=4)
 
     examples_df = pd.DataFrame(examples)
