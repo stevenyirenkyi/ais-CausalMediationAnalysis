@@ -13,3 +13,6 @@ Intervention codes can be found in the `interventions` folder. The resulting dat
 
 ---
 `attn_analysis.ipynb` and `neuron_analysis.ipynb` contains the plots used to analyse the results.
+
+---
+Rough Draft can be found [here](https://docs.google.com/document/d/14HaaYnQqeKRC-UC03Y_mq03Ipwuo0EZsQ_ws65pacJg/edit?usp=sharing). Still working it. Need to settle on where to place it first
